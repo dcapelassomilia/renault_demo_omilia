@@ -5,13 +5,14 @@ from flask import Flask, jsonify
 app = Flask(__name__)
 
 # Dados fictícios da demo Renault.
+# A 3ª letra da placa decide o cenário. O resto da placa é igual nas três.
 PLACAS = {
     "FSC1D23": {"status": "disponivel", "codigo": "3847"},
-    "FSC1D24": {"status": "bloqueado"},
-    "FSC1D25": {"status": "nao_localizado"},
+    "FSB1D23": {"status": "bloqueado"},
+    "FSN1D23": {"status": "nao_localizado"},
 }
-PADRAO = "FSC1D23"  # usada quando o final da placa não foi entendido
-FINAIS = {"3": "FSC1D23", "4": "FSC1D24", "5": "FSC1D25"}
+TERCEIRA_LETRA = {"C": "FSC1D23", "B": "FSB1D23", "N": "FSN1D23"}
+PADRAO = "FSC1D23"  # usada quando a 3ª letra não foi entendida
 
 # Como cada caractere é falado (nomes das letras em português do Brasil).
 LETRAS = {
@@ -26,10 +27,10 @@ DIGITOS = {
     "5": "cinco", "6": "seis", "7": "sete", "8": "oito", "9": "nove",
 }
 
-
-def falar(texto: str, separador: str = ", ") -> str:
-    """'FSC1D24' -> 'éfi, éssi, cê, um, dê, dois, quatro' (pronto para o agente falar)."""
-    return separador.join(LETRAS.get(c) or DIGITOS.get(c, c) for c in texto)
+# Pausas: vírgula entre letras, ponto ao redor dos números (para a voz não
+# acelerar nos números). Para voltar ao ritmo anterior, use ", " nos dois.
+SEP_LETRAS = ", "
+SEP_NUMEROS = ". "
 
 
 def normalizar(placa: str) -> str:
@@ -37,19 +38,33 @@ def normalizar(placa: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", placa).upper()
 
 
+def falar(texto: str) -> str:
+    """'FSC1D23' -> 'éfi, éssi, cê. um. dê. dois. três' (pronto para o agente falar)."""
+    if not texto:
+        return ""
+    itens = [LETRAS.get(c) or DIGITOS.get(c, c) for c in texto]
+    saida = itens[0]
+    for anterior, atual, item in zip(texto, texto[1:], itens[1:]):
+        numero = anterior.isdigit() or atual.isdigit()
+        saida += (SEP_NUMEROS if numero else SEP_LETRAS) + item
+    return saida
+
+
 def resolver(entrada: str):
     """Devolve (placa, dados). Tolerante a placas incompletas, só para a demo.
 
     1. Placa exata: usa a própria placa.
-    2. Começa com pelo menos duas das letras F, S, C: escolhe a placa da demo pelo
-       último caractere (3, 4 ou 5). Sem final entendido, usa a placa padrão.
-    3. Qualquer outra coisa: nao_localizado.
+    2. Uma das duas primeiras letras é F ou S: a 3ª letra (C, B ou N), procurada
+       nos quatro primeiros caracteres, escolhe a placa da demo. O final da placa
+       não importa. Sem a 3ª letra entendida, usa a placa padrão (disponível).
+    3. Qualquer outra coisa: nao_localizado, devolvendo o que foi enviado.
     """
     chave = normalizar(entrada)
     if chave in PLACAS:
         return chave, PLACAS[chave]
-    if sum(1 for c in "FSC" if c in chave[:4]) >= 2:
-        placa = FINAIS.get(chave[-1:], PADRAO)
+    if any(c in chave[:3] for c in "FS"):
+        letra = next((c for c in chave[:4] if c in TERCEIRA_LETRA), None)
+        placa = TERCEIRA_LETRA.get(letra, PADRAO)
         return placa, PLACAS[placa]
     return chave, {"status": "nao_localizado"}
 
@@ -59,7 +74,7 @@ def consultar_placa(placa):
     resolvida, dados = resolver(placa)
     resposta = {"placa": resolvida, "placa_falada": falar(resolvida), **dados}
     if "codigo" in dados:
-        resposta["codigo_falado"] = falar(dados["codigo"], ". ")
+        resposta["codigo_falado"] = falar(dados["codigo"])
     return jsonify(resposta)
 
 
