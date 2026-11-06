@@ -13,6 +13,24 @@ PLACAS = {
 PADRAO = "FSC1D23"  # usada quando o final da placa não foi entendido
 FINAIS = {"3": "FSC1D23", "4": "FSC1D24", "5": "FSC1D25"}
 
+# Como cada caractere é falado (nomes das letras em português do Brasil).
+LETRAS = {
+    "A": "á", "B": "bê", "C": "cê", "D": "dê", "E": "é", "F": "éfi", "G": "gê",
+    "H": "agá", "I": "i", "J": "jota", "K": "cá", "L": "éli", "M": "ême",
+    "N": "êni", "O": "ó", "P": "pê", "Q": "quê", "R": "érri", "S": "éssi",
+    "T": "tê", "U": "u", "V": "vê", "W": "dáblio", "X": "xis", "Y": "ípsilon",
+    "Z": "zê",
+}
+DIGITOS = {
+    "0": "zero", "1": "um", "2": "dois", "3": "três", "4": "quatro",
+    "5": "cinco", "6": "seis", "7": "sete", "8": "oito", "9": "nove",
+}
+
+
+def falar(texto: str, separador: str = ", ") -> str:
+    """'FSC1D24' -> 'éfi, éssi, cê, um, dê, dois, quatro' (pronto para o agente falar)."""
+    return separador.join(LETRAS.get(c) or DIGITOS.get(c, c) for c in texto)
+
 
 def normalizar(placa: str) -> str:
     """Deixa só letras e números, em maiúsculas (aceita 'fsc-1d23', 'FSC 1D23' etc.)."""
@@ -39,7 +57,10 @@ def resolver(entrada: str):
 @app.get("/placa/<placa>")
 def consultar_placa(placa):
     resolvida, dados = resolver(placa)
-    return jsonify({"placa": resolvida, **dados})
+    resposta = {"placa": resolvida, "placa_falada": falar(resolvida), **dados}
+    if "codigo" in dados:
+        resposta["codigo_falado"] = falar(dados["codigo"], ". ")
+    return jsonify(resposta)
 
 
 @app.get("/health")
