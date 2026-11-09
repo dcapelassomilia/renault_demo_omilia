@@ -5,14 +5,12 @@ from flask import Flask, jsonify
 app = Flask(__name__)
 
 # Dados fictícios da demo Renault.
-# A 3ª letra da placa decide o cenário. O resto da placa é igual nas três.
-PLACAS = {
-    "FSC1D23": {"status": "disponivel", "codigo": "3847"},
-    "FSB1D23": {"status": "bloqueado"},
-    "FSN1D23": {"status": "nao_localizado"},
-}
-TERCEIRA_LETRA = {"C": "FSC1D23", "B": "FSB1D23", "N": "FSN1D23"}
-PADRAO = "FSC1D23"  # usada quando a 3ª letra não foi entendida
+# Placa da demo: começa com F e S, e a 3ª letra decide o status. O resto não importa.
+TERCEIRA_LETRA = {"C": "disponivel", "B": "bloqueado", "N": "nao_localizado"}
+CODIGO = "3847"
+
+MERCOSUL = re.compile(r"^[A-Z]{3}[0-9][A-Z][0-9]{2}$")  # ABC1D23
+ANTIGA = re.compile(r"^[A-Z]{3}[0-9]{4}$")              # ABC1234
 
 # Como cada caractere é falado (nomes das letras em português do Brasil).
 LETRAS = {
@@ -50,32 +48,42 @@ def falar(texto: str) -> str:
     return saida
 
 
-def resolver(entrada: str):
-    """Devolve (placa, dados). Tolerante a placas incompletas, só para a demo.
+def modelo_da_placa(chave: str):
+    if MERCOSUL.match(chave):
+        return "mercosul"
+    if ANTIGA.match(chave):
+        return "antigo"
+    return None
 
-    1. Placa exata: usa a própria placa.
-    2. Uma das duas primeiras letras é F ou S: a 3ª letra (C, B ou N), procurada
-       nos quatro primeiros caracteres, escolhe a placa da demo. O final da placa
-       não importa. Sem a 3ª letra entendida, usa a placa padrão (disponível).
-    3. Qualquer outra coisa: nao_localizado, devolvendo o que foi enviado.
+
+def resolver(entrada: str) -> dict:
+    """A placa vem exatamente como o agente capturou (7 caracteres).
+
+    1. Formato inválido (nem Mercosul, nem modelo antigo): status formato_invalido.
+    2. Placa da demo (começa com F e S): a 3ª letra decide: C disponível,
+       B bloqueado, N não localizado.
+    3. Qualquer outra placa válida: nao_localizado.
+    A placa devolvida é a que foi enviada, sem conversão.
     """
     chave = normalizar(entrada)
-    if chave in PLACAS:
-        return chave, PLACAS[chave]
-    if any(c in chave[:3] for c in "FS"):
-        letra = next((c for c in chave[:4] if c in TERCEIRA_LETRA), None)
-        placa = TERCEIRA_LETRA.get(letra, PADRAO)
-        return placa, PLACAS[placa]
-    return chave, {"status": "nao_localizado"}
+    modelo = modelo_da_placa(chave)
+    resposta = {"placa": chave, "placa_falada": falar(chave), "modelo": modelo, "formato_ok": modelo is not None}
+    if modelo is None:
+        resposta["status"] = "formato_invalido"
+        return resposta
+    status = "nao_localizado"
+    if chave[:2] == "FS":
+        status = TERCEIRA_LETRA.get(chave[2], "nao_localizado")
+    resposta["status"] = status
+    if status == "disponivel":
+        resposta["codigo"] = CODIGO
+        resposta["codigo_falado"] = ". ".join(DIGITOS[c] for c in CODIGO)
+    return resposta
 
 
 @app.get("/placa/<placa>")
 def consultar_placa(placa):
-    resolvida, dados = resolver(placa)
-    resposta = {"placa": resolvida, "placa_falada": falar(resolvida), **dados}
-    if "codigo" in dados:
-        resposta["codigo_falado"] = falar(dados["codigo"])
-    return jsonify(resposta)
+    return jsonify(resolver(placa))
 
 
 @app.get("/health")
