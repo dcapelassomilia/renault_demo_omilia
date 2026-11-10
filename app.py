@@ -121,6 +121,41 @@ def ler_itens(texto: str):
     return itens, ajustes
 
 
+# Placas conhecidas da demo (a "base" do endpoint). Só estas podem ser completadas.
+PLACAS_DA_DEMO = ["FSC1D23", "FSB1D23", "FSN1D23"]
+MINIMO_PARA_COMPLETAR = 4
+
+
+def e_subsequencia(parcial: str, completa: str) -> bool:
+    """True se os caracteres de 'parcial' aparecem em 'completa', na mesma ordem (pode faltar caractere, nunca sobrar nem trocar)."""
+    it = iter(completa)
+    return all(c in it for c in parcial)
+
+
+def completar(itens):
+    """Completa uma placa incompleta (4 a 6 caracteres) SÓ se ela encaixar em UMA única placa da demo.
+
+    Devolve (itens_completos, completada). Se não encaixar, ou se encaixar em mais de uma,
+    não completa nada e devolve os itens como vieram.
+    """
+    chave = "".join(c for c, _ in itens)
+    if not (MINIMO_PARA_COMPLETAR <= len(chave) < 7):
+        return itens, False
+    candidatas = [p for p in PLACAS_DA_DEMO if e_subsequencia(chave, p)]
+    if len(candidatas) != 1:
+        return itens, False
+    alvo = candidatas[0]
+    # alinha os itens ouvidos (com palavra de apoio) à placa completa; os que faltaram entram sem palavra
+    resultado, i = [], 0
+    for c in alvo:
+        if i < len(itens) and itens[i][0] == c:
+            resultado.append(itens[i])
+            i += 1
+        else:
+            resultado.append((c, None))
+    return resultado, True
+
+
 def montar_resposta(chave: str, placa_falada: str, extra=None) -> dict:
     modelo = modelo_da_placa(chave)
     resposta = {"placa": chave, "placa_falada": placa_falada, "modelo": modelo, "formato_ok": modelo is not None}
@@ -149,6 +184,15 @@ def consultar_placa_v6(itens):
     lista, ajustes = ler_itens(itens)
     chave = "".join(c for c, _ in lista)
     return jsonify(montar_resposta(chave, falar_itens(lista), {"ajustes": ajustes}))
+
+
+# ---- v7: como a v6, mas completa placas incompletas que encaixam em UMA única placa da demo ----
+@app.get("/v7/placa/<itens>")
+def consultar_placa_v7(itens):
+    lista, ajustes = ler_itens(itens)
+    lista, completada = completar(lista)
+    chave = "".join(c for c, _ in lista)
+    return jsonify(montar_resposta(chave, falar_itens(lista), {"ajustes": ajustes, "completada": completada}))
 
 
 @app.get("/health")
